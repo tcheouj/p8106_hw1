@@ -1,0 +1,276 @@
+---
+title: "hw1"
+author: "Johnstone Tcheou"
+date: "2025-02-21"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+\newpage 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(81061)
+```
+
+```{r, echo = T, message = FALSE, results='hide', warning=FALSE}
+library(ISLR)
+library(glmnet)
+library(caret)
+library(tidymodels)
+library(corrplot)
+library(ggplot2)
+library(plotmo)
+library(ggrepel)
+library(pls)
+```
+
+```{r}
+training <- read.csv("housing_training.csv")
+testing <- read.csv("housing_test.csv")
+```
+
+# Question a
+
+We will be using `glmnet` to fit a lasso model on the training data. Since `glmnet` functions require the predictors to be passed as a matrix and the response variable to be passed as a vector. 
+
+```{r}
+predictors <- model.matrix(Sale_Price ~ ., training)[, -1] 
+response <- training[, "Sale_Price"]
+test <- model.matrix(Sale_Price ~ ., testing)[, -1]
+```
+
+Before fitting a model, we should also check for correlations between predictors, which may cause problems with lasso regression.   
+
+```{r}
+# corrplot(cor(predictors),  
+#          method = "circle", 
+#          type = "full")
+```
+
+There are some predictors which are correlated with each other, such as `Total_Bsmt_SF` and `First_Flr_SF`,  `Second_Flr_SF` and `Gr_Liv_Area`, `Kitchen_QualTypical` and `Kitchen_QualGood`, `Fireplaces` and `Fireplace_QuNo_FirePlace`. 
+
+Fitting the lasso model with `glmnet` requires `alpha` to be 1 for lasso regression, and passing a sequence of `lambda` values to hopefully capture the optimal lambda. The lambda values must be in descending order, hence the initial sequence value of 10 and the terminal sequence value of -20. 
+
+```{r}
+lasso_glmnet <- 
+  glmnet(
+    predictors,
+    response, 
+    alpha = 1, 
+    lambda = exp(seq(10, -5, length = 100)) 
+)
+
+mat.coef <- coef(lasso_glmnet)
+dim(mat.coef)
+
+plot_glmnet(lasso_glmnet)
+```
+
+Use 10-fold cross validation to determine optimal lambda and regression parameters. 
+
+```{r}
+lasso_glmnet_cv <-
+  cv.glmnet(
+    predictors, 
+    response,
+    alpha = 1,
+    lambda = exp(seq(10, -5, length = 100))
+  )
+
+plot(lasso_glmnet_cv)
+abline(h = (lasso_glmnet_cv$cvm + lasso_glmnet_cv$cvsd)[which.min(lasso_glmnet_cv$cvm)], col = 4, lwd = 2)
+
+lasso_glmnet_cv$lambda.1se
+
+lasso_glmnet_cv$cvm[which.min(lasso_glmnet_cv$cvm)]
+```
+
+The lambda value, our tuning parameter, that minimizes MSE is given by `r lasso_glmnet_cv$lambda.min`, and the smallest lambda value within 1 SE of the MSE is given by `r lasso_glmnet_cv$lambda.1se`. With the lambda that minimizes MSE, the test error is `r lasso_glmnet_cv$cvm[which.min(lasso_glmnet_cv$cvm)]`.
+
+To get the parameters of the model which minimizes MSE, we need to pass the corresponding lambda, `lasso_glmnet_cv$lambda_min`, to the `s` argument of `predict()`. 
+
+```{r}
+predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.min, type = "coefficients") 
+dim(predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.min, type = "coefficients"))
+
+predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.1se, type = "coefficients") 
+dim(predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.1se, type = "coefficients"))
+```
+
+Both models, with and without the 1SE rule, have 40 parameters included in the model.
+
+```{r}
+predy2_lasso <- predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.min, newx = test, type = "response")
+
+test_error_lasso <- mean((testing$Sale_Price - predy2_lasso)^2) 
+```
+
+After fitting the lasso regression model to the testing dataset, the test error is `r test_error_lasso`.
+
+# Question b
+
+With elastic net, the `alpha` argument should now be 0.5, as it is in between lasso and ridge regression, incorporating the penalties from both models. 
+
+```{r}
+elastic_glmnet <-
+  glmnet(
+    predictors,
+    response, 
+    alpha = 0.5, 
+    lambda = exp(seq(10, -5, length = 100)) 
+)
+
+mat.coef <- coef(elastic_glmnet)
+dim(mat.coef)
+
+plot_glmnet(elastic_glmnet)
+```
+
+Likewise, use 10-fold cross validation to determine optimal lambda and number of parameters to have in model. 
+
+```{r}
+elastic_glmnet_cv <-
+  cv.glmnet(
+    predictors, 
+    response,
+    alpha = 0.5,
+    lambda = exp(seq(10, -5, length = 100))
+  )
+
+plot(elastic_glmnet_cv)
+abline(h = (elastic_glmnet_cv$cvm + elastic_glmnet_cv$cvsd)[which.min(elastic_glmnet_cv$cvm)], col = 4, lwd = 2)
+
+elastic_glmnet_cv$lambda.1se
+
+elastic_glmnet_cv$cvm[which.min(elastic_glmnet_cv$cvm)]
+
+```
+
+The lambda which minimizes the cross validation MSE is `r elastic_glmnet_cv$lambda.min`. The corresponding test error is `r elastic_glmnet_cv$cvm[which.min(elastic_glmnet_cv$cvm)]`
+
+Unlike lasso, the 1SE rule is not applicable to elastic net regression. This is because elastic net has 2 different lambdas, so the ideal alpha to balance the two lambdas is unclear. 
+
+```{r}
+predy2_elastic <- predict(elastic_glmnet_cv, s = elastic_glmnet_cv$lambda.min, newx = test, type = "response")
+
+test_error_elastic <- mean((testing$Sale_Price - predy2_elastic)^2) 
+```
+
+After fitting the elastic net model on the testing dataset, the test error is `r test_error_elastic`.
+
+# Question c
+
+```{r}
+plsr_glmnet_cv <- plsr(
+  Sale_Price ~., 
+  data = training, 
+  scale = T,
+  validation = "CV"
+)
+
+summary(plsr_glmnet_cv)
+
+validationplot(plsr_glmnet_cv, val.type = "MSEP", legendpos = "topright")
+```
+
+```{r}
+cv_mse <- RMSEP(plsr_glmnet_cv)
+ncomp_cv <- which.min(cv_mse$val[1,,]) - 1
+ncomp_cv
+
+# calculate test MSE
+predy2_pls <- predict(plsr_glmnet_cv, newdata = testing, 
+                      ncomp = ncomp_cv)
+
+test_error_pls <- mean((testing$Sale_Price - predy2_pls)^2) 
+```
+
+The partial least squares model with the smallest MSE has `r ncomp_cv`. The test error is `r test_error_pls`.
+
+# Question d
+
+The best model to predict the response is the model with the lowest test error - which is elastic net regression. Elastic net regression has a test MSE of `r test_error_elastic`, which is lower than the elastic net regression test MSE of `r test_error_lasso` and lower than the partial least squares regression test MSE of `r test_error_pls`.
+
+```{r}
+resamp <- resamples(
+  list(lasso = lasso_glmnet_cv, elastic = elastic_glmnet_cv, pls = plsr_glmnet_cv)
+)
+```
+
+# Question e
+
+```{r}
+ctrl1 <- trainControl(method = "cv", number = 10)
+
+lasso_caret <- train(Sale_Price ~ . ,
+                   data = training,
+                   method = "glmnet",
+                   tuneGrid = expand.grid(alpha = 1,
+                                          lambda = exp(seq(10, -5, length=100))),
+                   trControl = ctrl1)
+
+plot(lasso_caret, xTrans = log)
+
+
+lasso_caret$bestTune
+train_id_list <- lasso_caret$control$index
+
+dat_dummy <- data.frame(Sale_Price = response, predictors)
+M <- 10
+lambda.grid <- exp(seq(20, -5, length = 100))
+rmse <- rmse_caret <- matrix(NA, ncol = 100, nrow = M)
+
+for (m in 1:M){
+  tsdata <- dat_dummy[train_id_list[[m]],] 
+  vsdata <- dat_dummy[-train_id_list[[m]],] 
+  
+  x1 <- as.matrix(tsdata[,-1])
+  y1 <- tsdata[,1]
+  x2 <- as.matrix(vsdata[,-1])
+  y2 <- vsdata[,1]
+  
+  fit <- glmnet(x1, y1, alpha = 1, 
+                lambda = lambda.grid)
+  
+  # caret implementation did not specify lambda
+  # the default grid of lambda is different from lambda.grid
+  fit_caret <- glmnet(x1, y1, alpha = 1)
+  
+  pred <- predict(fit, newx = x2, s = lambda.grid)
+  pred_caret <- predict(fit_caret, newx = x2, s = lambda.grid)
+  
+  rmse[m,] <- sqrt(colMeans((y2 - pred)^2))
+  rmse_caret[m,] <- sqrt(colMeans((y2 - pred_caret)^2))
+}
+
+# curve from glmnet (correct)
+plot(log(lambda.grid), colMeans(rmse), col = 3, xlab = "log(lambda)", ylab = "CV RMSE")
+abline(v = log(lambda.grid[which.min(colMeans(rmse))]))
+
+# caret results
+points(log(lasso_caret$results$lambda), lasso_caret$results$RMSE, col = 2)
+
+# try to reproduce caret results from scratch
+points(log(lambda.grid), colMeans(rmse_caret), col = rgb(0,0,1,alpha = 0.3))
+
+
+# selected lambda
+lambda.grid[which.min(colMeans(rmse))]
+
+# the corresponding CV RMSE
+min(colMeans(rmse))
+
+plot(lasso_caret, xTrans = log)
+
+lasso_caret$bestTune
+
+# coefficients in the final model
+coef(lasso_caret$finalModel, lasso_caret$bestTune$lambda)
+```
