@@ -18,10 +18,10 @@ Set a seed to ensure reproducibility of results.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-set.seed(81061)
 ```
 
 ```{r, echo = T, message = FALSE, results='hide', warning=FALSE}
+set.seed(81061)
 library(ISLR)
 library(glmnet)
 library(caret)
@@ -282,7 +282,7 @@ lasso_glmnet_cv$lambda.1se
 lasso_glmnet_cv$cvm[which.min(lasso_glmnet_cv$cvm)]
 ```
 
-The lambda value, our tuning parameter, that minimizes MSE is given by `r lasso_glmnet_cv$lambda.min`, and the smallest lambda value within 1 SE of the MSE is given by `r lasso_glmnet_cv$lambda.1se`. With the lambda that minimizes MSE, the test error is `r lasso_glmnet_cv$cvm[which.min(lasso_glmnet_cv$cvm)]`.
+The lambda value, our tuning parameter, that minimizes MSE is given by `r lasso_glmnet_cv$lambda.min`, and the smallest lambda value within 1 SE of the MSE is given by `r lasso_glmnet_cv$lambda.1se`. 
 
 To get the parameters of the model which minimizes MSE, we need to pass the corresponding lambda, `lasso_glmnet_cv$lambda_min`, to the `s` argument of `predict()`. 
 
@@ -294,12 +294,12 @@ predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.1se, type = "coefficients")
 dim(predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.1se, type = "coefficients"))
 ```
 
-Both models, with and without the 1SE rule, have 40 parameters included in the model.
+With the lambda that minimizes MSE, there are 37 predictors excluding the intercept. With the smallest lambda within 1 SE, there are 30 predictors, which varies slightly with the `caret` model of 29 predictors. 
 
 ```{r}
-predy2_lasso <- predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.min, newx = test, type = "response")
+lasso_glmnet_cv_pred <- predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.min, newx = test, type = "response")
 
-test_error_lasso <- mean((testing$Sale_Price - predy2_lasso)^2) 
+lasso_glmnet_cv_testerror <- mean((lasso_glmnet_cv_pred - testing[, "Sale_Price"])^2) 
 ```
 
-After fitting the lasso regression model to the testing dataset, the test error is `r test_error_lasso`.
+After fitting the lasso regression model to the testing dataset, the test error is `r lasso_glmnet_cv_testerror`.
