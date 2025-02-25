@@ -230,11 +230,11 @@ This optimal PLR model also has 39 predictors, excluding the intercept.
 
 # Question d
 
-The best model to predict the response is the model with the lowest training error - which is lasso regression. Applied to the training data, the lasso model has a mean RMSE of 22709.16, while partial least squares has a mean RMSE of 22909.59, and elastic has a mean RMSE of 23001.77. Therefore, the best model is the lasso regression model. 
+The best model to predict the response is the model with the lowest training error - which is lasso regression. Applied to the training data, the lasso model has a mean RMSE of 22709.16, while the lasso model with 1 SE rule has a mean RMSE of 23619.34, partial least squares has a mean RMSE of 22909.59, and elastic has a mean RMSE of 23001.77. Therefore, the best model is the lasso regression model. 
 
 ```{r}
 resamp <- resamples(
-  list(lasso = lasso_caret, elastic = elastic_caret, pls = pls_caret)
+  list(lasso = lasso_caret, lasso_1se = lasso_caret_1se, elastic = elastic_caret, pls = pls_caret)
 )
 
 summary(resamp)
@@ -294,7 +294,9 @@ predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.1se, type = "coefficients")
 dim(predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.1se, type = "coefficients"))
 ```
 
-With the lambda that minimizes MSE, there are 37 predictors excluding the intercept. With the smallest lambda within 1 SE, there are 30 predictors, which varies slightly with the `caret` model of 29 predictors. 
+With the lambda that minimizes MSE, there are 37 predictors excluding the intercept. With the smallest lambda within 1 SE, there are likewise 29 predictors. Both of these number of predictors corroborate with the results from `caret`. 
+
+For the optimal lambda values, both the `glmnet` (`r lasso_glmnet_cv$lambda.min`) and `caret` (`r lasso_caret$bestTune$lambda`) implementations get the same numbers. However, the lambdas within the 1 SE rule are also the different (`r lasso_glmnet_cv$lambda.1se` for `glmnet` and `r lasso_caret_1se$bestTune$lambda` for `caret`). The differences in this may be in the implementation of getting the 1 SE of the regularization parameter, since `caret` requires fitting a new model altogether using the prespecified control parameters with the 1 SE rule, while the lambda within 1 SE is a subobject of the model outputted by `glmnet`. 
 
 ```{r}
 lasso_glmnet_cv_pred <- predict(lasso_glmnet_cv, s = lasso_glmnet_cv$lambda.min, newx = test, type = "response")
