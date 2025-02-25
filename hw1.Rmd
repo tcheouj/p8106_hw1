@@ -49,7 +49,6 @@ response <- training[, "Sale_Price"]
 test <- model.matrix(Sale_Price ~ ., testing)[, -1]
 ```
 
-
 Before fitting a model, we should also check for correlations between predictors, which may cause problems with lasso regression.   
 
 ```{r}
